@@ -59,6 +59,10 @@
 #include <signal.h>
 #include <ctype.h>
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+
 #define VERSION "0.0.1"
 
 #define VENDOR_ID  0x0c45
@@ -68,18 +72,15 @@
 #define INTERFACE2 0x01
 
 const static int reqIntLen=8;
-const static int reqBulkLen=8;
 const static int endpoint_Int_in=0x82; /* endpoint 0x81 address for IN */
 const static int endpoint_Int_out=0x00; /* endpoint 1 address for OUT */
-const static int endpoint_Bulk_in=0x82; /* endpoint 0x81 address for IN */
-const static int endpoint_Bulk_out=0x00; /* endpoint 1 address for OUT */
 const static int timeout=5000; /* timeout in ms */
 
-const static char uTemperatura[] = { 0x01, 0x80, 0x33, 0x01, 0x00, 0x00, 0x00, 0x00 };
-const static char uIni1[] = { 0x01, 0x82, 0x77, 0x01, 0x00, 0x00, 0x00, 0x00 };
-const static char uIni2[] = { 0x01, 0x86, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00 };
+const static char uTemperature[] = { 0x01, 0x80, 0x33, 0x01, 0x00, 0x00, 0x00, 0x00 };
+const static char uIni1[]        = { 0x01, 0x82, 0x77, 0x01, 0x00, 0x00, 0x00, 0x00 };
+const static char uIni2[]        = { 0x01, 0x86, 0xff, 0x01, 0x00, 0x00, 0x00, 0x00 };
 
-static int bsalir=1;
+static int interrupt=0;
 static int seconds=5;
 
 
@@ -123,14 +124,14 @@ usb_dev_handle *find_dev() {
 }
 
 void ini_control_transfer(usb_dev_handle *dev) {
-    char question[] = { 0x01,0x01 };
-    ASSERT(usb_control_msg(dev, 0x21, 0x09, 0x0201, 0x00, (char *) question, 2, timeout) >= 0);
+    unsigned char question[] = { 0x01,0x01 };
+    ASSERT(usb_control_msg(dev, 0x21, 0x09, 0x0201, 0x00, (char*)question, 2, timeout) >= 0);
 }
 
 void control_transfer(usb_dev_handle *dev, const char *pquestion) {
-    char question[reqIntLen];
+    unsigned char question[reqIntLen];
     memcpy(question, pquestion, sizeof question);
-    ASSERT(usb_control_msg(dev, 0x21, 0x09, 0x0200, 0x01, (char *) question, reqIntLen, timeout) >= 0);
+    ASSERT(usb_control_msg(dev, 0x21, 0x09, 0x0200, 0x01, (char*)question, reqIntLen, timeout) >= 0);
 }
 
 void interrupt_transfer(usb_dev_handle *dev) {
@@ -149,31 +150,40 @@ void interrupt_read(usb_dev_handle *dev) {
     ASSERT(usb_interrupt_read(dev, 0x82, answer, reqIntLen, timeout) == reqIntLen);
 }
 
-void interrupt_read_temperatura(usb_dev_handle *dev, float *tempC) {
-    int temperature;
-    char answer[reqIntLen];
+int16_t interrupt_read_temperature(usb_dev_handle *dev) {
+    unsigned char answer[reqIntLen];
     bzero(answer, reqIntLen);
-    ASSERT(usb_interrupt_read(dev, 0x82, answer, reqIntLen, timeout) == reqIntLen);
-    temperature = (answer[3] & 0xFF) + (answer[2] << 8);
-    *tempC = temperature * (125.0 / 32000.0);
-}
-
-void bulk_transfer(usb_dev_handle *dev) {
-    char answer[reqBulkLen];
-    ASSERT(usb_bulk_write(dev, endpoint_Bulk_out, NULL, 0, timeout) >= 0);
-    ASSERT(usb_bulk_read(dev, endpoint_Bulk_in, answer, reqBulkLen, timeout) == reqBulkLen);
-    usb_release_interface(dev, 0);
+    ASSERT(usb_interrupt_read(dev, 0x82, (char*)answer, reqIntLen, timeout) == reqIntLen);
+    int16_t hi = (((char*)answer)[2]);
+    int16_t lo = answer[3];
+    return lo + hi*256;
 }
 
 void ex_program(int sig) {
-    bsalir=1;
+    interrupt=1;
     (void) signal(SIGINT, SIG_DFL);
+}
+
+int open_socket(const char *host, int port) {
+    struct hostent *hp = gethostbyname(host);
+    struct sockaddr_in address;
+    memset(&address, 0, sizeof(struct sockaddr_in));
+    memcpy((char *)&address.sin_addr,
+           (char *)hp->h_addr, hp->h_length);
+    address.sin_port = htons((u_short)port);
+    address.sin_family = AF_INET;
+    int sockfd;
+    ASSERT((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) >= 0);
+    socklen_t addrlen = sizeof(address);
+    ASSERT(-1 != connect(sockfd, (struct sockaddr *) &address, addrlen));
+    return sockfd;
 }
 
 int main( int argc, char **argv) {
 
+    int fd = open_socket("beaglebone.zoo", 2001);
+
     usb_dev_handle *dev = NULL;
-    float tempc;
 
     ASSERT(dev = setup_libusb_access());
 
@@ -181,7 +191,7 @@ int main( int argc, char **argv) {
 
     ini_control_transfer(dev);
 
-    control_transfer(dev, uTemperatura );
+    control_transfer(dev, uTemperature );
     interrupt_read(dev);
 
     control_transfer(dev, uIni1 );
@@ -189,22 +199,25 @@ int main( int argc, char **argv) {
 
     control_transfer(dev, uIni2 );
     interrupt_read(dev);
-    interrupt_read(dev);
+    interrupt_read(dev); // workaround
 
     do {
-        // Workaround: needs to be read twice, otherwise it hangs next time.
-        control_transfer(dev, uTemperatura );
-        interrupt_read_temperatura(dev, &tempc);
+        // workaround: needs to be read twice, otherwise it hangs next time.
+        control_transfer(dev, uTemperature );
+        interrupt_read(dev);
 
-        control_transfer(dev, uTemperatura );
-        interrupt_read_temperatura(dev, &tempc);
+        control_transfer(dev, uTemperature );
+        int16_t dac = interrupt_read_temperature(dev);
 
-        printf("%.2f\n", tempc);
-        printf("%.2f\n", tempc);
+        float c = ((float)dac) / 256.0;
+        float f = 32 + c * 1.8;
+        printf("%02x %.2f %.2f\n", dac, c, f);
 
-        if (!bsalir)
-            sleep(seconds);
-    } while (!bsalir);
+        ASSERT(send(fd, &dac, sizeof(dac), 0) == sizeof(dac));
+
+        if (!interrupt) sleep(seconds);
+
+    } while (!interrupt);
 
     usb_release_interface(dev, INTERFACE1);
     usb_release_interface(dev, INTERFACE2);
