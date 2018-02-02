@@ -45,7 +45,7 @@
 #define ASSERT(assertion) ({ \
             if(!(assertion)) { \
                 LOG("%s: %d: ASSERT FAIL: " #assertion "\n", __FILE__, __LINE__); \
-                exit(1); \
+                assert_fail(); \
             } })
 
 
@@ -62,6 +62,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
+
+#include <setjmp.h>
 
 #define VERSION "0.0.1"
 
@@ -83,7 +85,14 @@ const static char uIni2[]        = { 0x01, 0x86, 0xff, 0x01, 0x00, 0x00, 0x00, 0
 static int interrupt=0;
 static int seconds=5;
 
+jmp_buf error_jmp_buf;
 
+
+
+void assert_fail() {
+    //exit(1);
+    longjmp(error_jmp_buf, 1);
+}
 
 usb_dev_handle *find_dev();
 
@@ -179,24 +188,30 @@ int open_socket(const char *host, int port) {
     return sockfd;
 }
 
-int main( int argc, char **argv) {
+void usb_cleanup(usb_dev_handle *dev) {
+    usb_release_interface(dev, INTERFACE1);
+    usb_release_interface(dev, INTERFACE2);
+    usb_close(dev);
+}
 
-    int fd = open_socket("beaglebone.zoo", 2001);
 
-    usb_dev_handle *dev = NULL;
+/* App state. */
+int fd;
+usb_dev_handle *dev;
 
+
+
+int start(int argc, char **argv) {
+    fd = (argc != 3) ? -1 : open_socket(argv[1], atoi(argv[2]));
+    dev = NULL;
     ASSERT(dev = setup_libusb_access());
-
     (void) signal(SIGINT, ex_program);
 
     ini_control_transfer(dev);
-
     control_transfer(dev, uTemperature );
     interrupt_read(dev);
-
     control_transfer(dev, uIni1 );
     interrupt_read(dev);
-
     control_transfer(dev, uIni2 );
     interrupt_read(dev);
     interrupt_read(dev); // workaround
@@ -209,20 +224,39 @@ int main( int argc, char **argv) {
         control_transfer(dev, uTemperature );
         int16_t dac = interrupt_read_temperature(dev);
 
-        float c = ((float)dac) / 256.0;
-        float f = 32 + c * 1.8;
-        printf("%02x %.2f %.2f\n", dac, c, f);
-
-        ASSERT(send(fd, &dac, sizeof(dac), 0) == sizeof(dac));
+        if (-1 == fd) {
+            float c = ((float)dac) / 256.0;
+            float f = 32 + c * 1.8;
+            printf("%02x %.2f %.2f\n", dac, c, f);
+        }
+        else {
+            ASSERT(send(fd, &dac, sizeof(dac), 0) == sizeof(dac));
+        }
 
         if (!interrupt) sleep(seconds);
 
     } while (!interrupt);
 
-    usb_release_interface(dev, INTERFACE1);
-    usb_release_interface(dev, INTERFACE2);
-
-    usb_close(dev);
+    usb_cleanup(dev);
+    close(fd);
 
     return 0;
+}
+
+
+int main(int argc, char **argv) {
+    // Monitor loop
+    do {
+        if(!setjmp(error_jmp_buf)) {
+            // TRY
+            start(argc, argv);
+        }
+        else {
+            // CATCH
+            usb_cleanup(dev);
+            close(fd);
+            LOG("restarting in 3 seconds\n");
+            sleep(3);
+        }
+    } while (!interrupt);
 }
