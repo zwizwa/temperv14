@@ -230,7 +230,8 @@ int start(int argc, char **argv) {
             printf("%02x %.2f %.2f\n", dac, c, f);
         }
         else {
-            ASSERT(send(fd, &dac, sizeof(dac), 0) == sizeof(dac));
+            int32_t msg = dac << 16 | 0xFFFF;
+            ASSERT(send(fd, &msg, sizeof(msg), 0) == sizeof(msg));
         }
 
         if (!interrupt) sleep(seconds);
