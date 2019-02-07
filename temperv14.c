@@ -88,7 +88,6 @@ static int seconds=5;
 jmp_buf error_jmp_buf;
 
 
-
 void assert_fail() {
     //exit(1);
     longjmp(error_jmp_buf, 1);

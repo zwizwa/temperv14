@@ -1,5 +1,7 @@
 .PHONY: all
-all: $(patsubst %,build/%/temperv14.elf,host nexx)
+ALL := $(patsubst %,build/%/temperv14.elf,host nexx)
+all: $(ALL)
+
 
 .PHONY: clean
 clean:
@@ -20,9 +22,14 @@ build/host/%.elf: %.c
 flycheck.env: Makefile
 	echo "FLYCHECK_GCC=\"gcc $(CFLAGS) -I.\"" >$@
 
-# For exo deploy
-deploy:
-
+# Create a list of build targets to deploy.  As a side effect, this
+# should rebuild the files if necessary.
+deploy.list: $(ALL)
+	echo $(ALL) >$@
+# Perform individual file deployment.
+%.deploy: %
+	[ ! -z "$$DST" ]
+	../../ssh/exo_ssh.sh $$DST update bin/temperv14.elf <$<
 
 
 # OpenWRT SDK
