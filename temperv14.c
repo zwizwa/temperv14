@@ -228,6 +228,7 @@ int start(int argc, char **argv) {
             float c = ((float)dac) / 256.0;
             float f = 32 + c * 1.8;
             printf("%02x %.2f %.2f\n", dac, c, f);
+            fflush(stdout); // FIXME!
         }
         else {
             int32_t msg = dac << 16 | 0xFFFF;
@@ -261,3 +262,4 @@ int main(int argc, char **argv) {
         }
     } while (!interrupt);
 }
+
