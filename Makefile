@@ -22,15 +22,6 @@ build/host/%.elf: %.c
 flycheck.env: Makefile
 	echo "FLYCHECK_GCC=\"gcc $(CFLAGS) -I.\"" >$@
 
-# Create a list of build targets to deploy.  As a side effect, this
-# should rebuild the files if necessary.
-deploy.list: $(ALL)
-	echo $(ALL) >$@
-# Perform individual file deployment.
-%.deploy: %
-	[ ! -z "$$DST" ]
-	../../ssh/exo_ssh.sh $$DST update bin/temperv14.elf <$<
-
 
 # OpenWRT SDK
 CROSS=/i/cross
@@ -39,3 +30,14 @@ build/nexx/%.elf: %.c Makefile
 	mkdir -p $$(dirname $@)
 	. $(CROSS)/env-nexx.sh ; mipsel-openwrt-linux-gcc -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
 	file $@
+
+
+
+# Create a list of build targets to push.  As a side effect, this
+# should rebuild the files if necessary.
+push.list: $(ALL)
+	echo $(ALL) >$@
+# Perform individual file deployment
+%.push: %
+	[ ! -z "$$DST" ]
+	../../ssh/exo_ssh.sh $$DST update bin/temperv14.elf <$<

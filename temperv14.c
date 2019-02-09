@@ -224,18 +224,19 @@ int start(int argc, char **argv) {
         int16_t dac = interrupt_read_temperature(dev);
 
         if (-1 == fd) {
+            // New: query/response on stdio
             float c = ((float)dac) / 256.0;
             float f = 32 + c * 1.8;
-            printf("%02x %.2f %.2f\n", dac, c, f);
-            fflush(stdout); // FIXME!
+            if (EOF == getchar()) { exit(0); }
+            printf("%d %.2f %.2f\n", (unsigned int)dac, (double)c, (double)f);
+            ASSERT(0 == fflush(stdout));
         }
         else {
+            // Old approach: daemon sending UDP packets.
             int32_t msg = dac << 16 | 0xFFFF;
             ASSERT(send(fd, &msg, sizeof(msg), 0) == sizeof(msg));
+            if (!interrupt) sleep(seconds);
         }
-
-        if (!interrupt) sleep(seconds);
-
     } while (!interrupt);
 
     usb_cleanup(dev);
