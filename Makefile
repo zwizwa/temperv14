@@ -40,4 +40,4 @@ push.list: $(ALL)
 # Perform individual file deployment
 %.push: %
 	[ ! -z "$$DST" ]
-	../../ssh/exo_ssh.sh $$DST update bin/temperv14.elf <$<
+	../../apps/exo/priv/ssh/exo_ssh.sh $$DST update bin/$$(basename $*) <$<
