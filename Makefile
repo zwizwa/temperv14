@@ -1,4 +1,8 @@
 .PHONY: all
+
+# FIXME: only do host here.  Other targets need to use the $(TARGET)
+# mechianism.  See exo/target/Makefile for an example.
+
 ALL := $(patsubst %,build/%/temperv14.elf,host nexx)
 all: $(ALL)
 
@@ -7,11 +11,21 @@ all: $(ALL)
 clean:
 	rm -rf build flycheck.env
 
-
+# Native build with gcc in path.
 build/host/%.elf: %.c
 	mkdir -p $$(dirname $@)
 	gcc -Os -o $@ $< -lusb -Wall -Werror
 	strip $@
+
+# Abstract cross-compilation.  Top level Makefile will set TARGET and
+# TARGET_BUILD to provide a build mechanism.  We call that with
+# proper C flags.
+build/$(TARGET)/%.elf: %.c
+	[ ! -z "$(TARGET_BUILD)" ]
+	mkdir -p $$(dirname $@)
+	$(TARGET_BUILD) gcc -Os -o $@ $< -lusb -Wall -Werror
+	$(TARGET_BUILD) strip $@
+
 
 
 
@@ -36,25 +50,4 @@ push.list: $(ALL)
 %.push: %
 	[ ! -z "$$DST" ]
 	../../apps/exo/priv/ssh/exo_ssh.sh $$DST update bin/$$(basename $*) <$<
-
-
-# 3. Cross compilation
-
-# Delegate to caller-specified build tools.  We just supply compiler flags here.
-# See ~/exo/target/Makefile, rule for armdeb
-build/$(TARGET)/%.elf: %.c
-	[ ! -z "$(TARGET_BUILD)" ]
-	mkdir -p $$(dirname $@)
-	$(TARGET_BUILD) gcc -Os -o $@ $< -lusb -Wall -Werror
-	$(TARGET_BUILD) strip $@
-
-# FIXME: use the abstraction above to do just this.
-# OpenWRT SDK
-CROSS=/i/cross
-build/nexx/%.elf: %.c Makefile
-	[ -d "$(CROSS)" ]
-	mkdir -p $$(dirname $@)
-	. $(CROSS)/env-nexx.sh ; mipsel-openwrt-linux-gcc -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
-	file $@
-
 
