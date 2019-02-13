@@ -31,6 +31,12 @@ build/nexx/%.elf: %.c Makefile
 	. $(CROSS)/env-nexx.sh ; mipsel-openwrt-linux-gcc -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
 	file $@
 
+# root@panda:~# apt-get install gcc-6-arm-linux-gnueabi
+build/armdeb/%.elf: %.c Makefile
+	mkdir -p $$(dirname $@)
+	arm-linux-gnueabi-gcc-6 -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
+	file $@
+
 
 
 # Create a list of build targets to push.  As a side effect, this
