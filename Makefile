@@ -13,31 +13,20 @@ build/host/%.elf: %.c
 	gcc -Os -o $@ $< -lusb -Wall -Werror
 	strip $@
 
-# .PHONY: install
-# install:
-# 	chown root:root temperv14.elf
-# 	for host in zoo.zoo lroom.zoo broom.zoo zoe.zoo; do rsync.clone temperv14.elf $$host:/usr/local/bin; done
+
+
+
+# Interfaces to exo build system.
+# FIXME: make this minimal.
+
+# 1. Continuous syntax checking using flycheck.
 
 # For emacs flycheck setup (FIXME: decouple this through .push_change)
 flycheck.env: Makefile
 	echo "FLYCHECK_GCC=\"gcc $(CFLAGS) -I.\"" >$@
 
 
-# OpenWRT SDK
-CROSS=/i/cross
-build/nexx/%.elf: %.c Makefile
-	[ -d "$(CROSS)" ]
-	mkdir -p $$(dirname $@)
-	. $(CROSS)/env-nexx.sh ; mipsel-openwrt-linux-gcc -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
-	file $@
-
-# root@panda:~# apt-get install gcc-6-arm-linux-gnueabi
-build/armdeb/%.elf: %.c Makefile
-	mkdir -p $$(dirname $@)
-	arm-linux-gnueabi-gcc-6 -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
-	file $@
-
-
+# 2. Incremental updates.  This needs some work.
 
 # Create a list of build targets to push.  As a side effect, this
 # should rebuild the files if necessary.
@@ -47,3 +36,25 @@ push.list: $(ALL)
 %.push: %
 	[ ! -z "$$DST" ]
 	../../apps/exo/priv/ssh/exo_ssh.sh $$DST update bin/$$(basename $*) <$<
+
+
+# 3. Cross compilation
+
+# Delegate to caller-specified build tools.  We just supply compiler flags here.
+# See ~/exo/target/Makefile, rule for armdeb
+build/$(TARGET)/%.elf: %.c
+	[ ! -z "$(TARGET_BUILD)" ]
+	mkdir -p $$(dirname $@)
+	$(TARGET_BUILD) gcc -Os -o $@ $< -lusb -Wall -Werror
+	$(TARGET_BUILD) strip $@
+
+# FIXME: use the abstraction above to do just this.
+# OpenWRT SDK
+CROSS=/i/cross
+build/nexx/%.elf: %.c Makefile
+	[ -d "$(CROSS)" ]
+	mkdir -p $$(dirname $@)
+	. $(CROSS)/env-nexx.sh ; mipsel-openwrt-linux-gcc -Os -o $@ $< -I../include -DMAIN=main -Wall -Werror -lusb -Wall -Werror
+	file $@
+
+
