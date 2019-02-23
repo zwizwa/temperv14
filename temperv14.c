@@ -65,6 +65,10 @@
 
 #include <setjmp.h>
 
+/*
+ELF_LDLIBS=-lusb
+*/
+
 #define VERSION "0.0.1"
 
 #define VENDOR_ID  0x0c45
