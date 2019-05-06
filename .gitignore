@@ -1,0 +1,7 @@
+*.env.sh
+out.list
+*.elf
+*.o
+*~
+*.a
+
